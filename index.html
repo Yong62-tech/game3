@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML 射击游戏</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>简单射击游戏 (HTML版)</h1>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <div id="instructions">
+        <h2>操作说明：</h2>
+        <p>键盘：左右箭头 (← →) 或 A/D 移动，空格键发射</p>
+        <p>触摸板/鼠标：水平移动控制飞船，点击发射</p>
+        <p id="gameStateText">点击画布开始游戏</p>
+    </div>
+
+    <div id="score">分数: <span id="scoreValue">0</span></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
