@@ -1,197 +1,199 @@
 // --- 获取 HTML 元素 ---
 const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d'); // 获取 2D 绘图上下文
-const scoreElement = document.getElementById('scoreValue');
-const gameStateText = document.getElementById('gameStateText');
+const ctx = canvas.getContext('2d');
 
 // --- 游戏常量 ---
-const PLAYER_WIDTH = 50;
-const PLAYER_HEIGHT = 30;
-const PLAYER_SPEED = 8;
-const BULLET_WIDTH = 5;
-const BULLET_HEIGHT = 15;
-const BULLET_SPEED = 10;
-const ENEMY_WIDTH = 40;
-const ENEMY_HEIGHT = 30;
-const ENEMY_SPEED_MIN = 1;
-const ENEMY_SPEED_MAX = 3;
-const ENEMY_SPAWN_RATE = 100; // 每 100 帧尝试生成一个敌人 (数值越小越快)
-const PLAYER_COLOR = 'lime'; // 玩家颜色 (亮绿色)
-const BULLET_COLOR = 'cyan'; // 子弹颜色 (青色)
-const ENEMY_COLOR = 'red';   // 敌人颜色 (红色)
-const TEXT_COLOR = 'white'; // 文字颜色
+// 使用新的画布尺寸
+const CANVAS_WIDTH = canvas.width;
+const CANVAS_HEIGHT = canvas.height;
+
+// 玩家属性 (半圆)
+const PLAYER_RADIUS = 20; // 半径决定大小
+const PLAYER_SPEED = 5;
+const PLAYER_COLOR = '#87CEFA'; // Light Sky Blue
+
+// 子弹属性 (小圆)
+const BULLET_RADIUS = 4;
+const BULLET_SPEED = 7;
+const BULLET_COLOR = '#FFFFFF'; // White
+
+// 敌人属性 (圆)
+const ENEMY_RADIUS_MIN = 15;
+const ENEMY_RADIUS_MAX = 25;
+const ENEMY_SPEED_MIN = 0.5;
+const ENEMY_SPEED_MAX = 1.5;
+const ENEMY_SPAWN_RATE = 180; // 敌人生成频率变慢 (数值越大越慢)
+const ENEMY_COLORS = ['#FF69B4', '#FFFF00', '#DA70D6', '#FFA07A', '#ADD8E6']; // Pink, Yellow, Orchid, LightSalmon, LightBlue
+
+// 其他
+const STAR_COUNT = 100;
+const STAR_COLOR = '#FFFFFF';
+const TEXT_COLOR = '#FFFFFF'; // White text
+const BACKGROUND_COLOR = '#000020'; // Very dark blue/black background
 
 // --- 游戏变量 ---
 let score = 0;
 let gameRunning = false;
 let gameOver = false;
-let frameCount = 0; // 帧计数器，用于控制生成敌人
+let frameCount = 0;
+let stars = [];
 
 // --- 游戏对象 ---
 let player = {
-    x: canvas.width / 2 - PLAYER_WIDTH / 2,
-    y: canvas.height - PLAYER_HEIGHT - 20,
-    width: PLAYER_WIDTH,
-    height: PLAYER_HEIGHT,
+    x: CANVAS_WIDTH / 2,
+    y: CANVAS_HEIGHT - PLAYER_RADIUS * 1.5, // Adjust starting Y based on radius
+    radius: PLAYER_RADIUS,
     speed: 0, // 当前水平速度 (键盘控制)
-    shootCooldown: 0, // 射击冷却计时
-    shootDelay: 15 // 射击间隔 (帧数)
+    shootCooldown: 0,
+    shootDelay: 20 // Slightly slower shooting
 };
 
-let bullets = []; // 存储所有子弹的数组
-let enemies = []; // 存储所有敌人的数组
+let bullets = [];
+let enemies = [];
 
-// --- 音效 (简单HTML5 Audio) ---
-// 注意：浏览器可能限制声音自动播放，通常需要用户交互（如点击）后才能播放
-let shootSound = new Audio(); // 创建一个 Audio 对象
-let hitSound = new Audio();
-// 尝试加载声音文件 (如果想用自己的文件)
-// shootSound.src = 'sounds/shoot.wav';
-// hitSound.src = 'sounds/hit.wav';
-// 简单的备用声音 (需要浏览器支持 Web Audio API 的简单 beep)
-function playBeep(frequency = 440, duration = 50, volume = 0.1) {
+// --- 音效 (保持简单 Beep) ---
+function playBeep(frequency = 440, duration = 50, volume = 0.05, type = 'sine') {
     try {
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
-
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
-
         gainNode.gain.value = volume;
-        oscillator.frequency.value = frequency; // value in hertz
-        oscillator.type = 'sine'; // sine, square, sawtooth, triangle
-
+        oscillator.frequency.value = frequency;
+        oscillator.type = type;
         oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + duration / 1000); // duration in seconds
+        oscillator.stop(audioContext.currentTime + duration / 1000);
     } catch (e) {
-        console.log("浏览器不支持 Web Audio API 或播放出错", e);
+        console.log("无法播放声音:", e);
     }
 }
+const shootSound = () => playBeep(880, 50, 0.03, 'triangle'); // Higher pitch, triangle wave
+const hitSound = () => playBeep(220, 80, 0.05, 'sawtooth');   // Lower pitch, sawtooth wave
+const gameOverSound = () => playBeep(110, 200, 0.08, 'square'); // Low long beep
 
-// --- 输入处理 ---
-let keysPressed = {}; // 记录按下的键
-let mouseX = canvas.width / 2; // 鼠标/触摸板 X 坐标
-let mouseClicked = false; // 鼠标/触摸板是否点击
+// --- 输入处理 (基本不变) ---
+let keysPressed = {};
+let mouseX = CANVAS_WIDTH / 2;
+let mouseClicked = false;
 
-// 键盘事件监听
-document.addEventListener('keydown', (event) => {
-    keysPressed[event.code] = true;
-});
+document.addEventListener('keydown', (event) => { keysPressed[event.code] = true; });
+document.addEventListener('keyup', (event) => { keysPressed[event.code] = false; });
 
-document.addEventListener('keyup', (event) => {
-    keysPressed[event.code] = false;
-});
-
-// 鼠标/触摸板事件监听
 canvas.addEventListener('mousemove', (event) => {
-    const rect = canvas.getBoundingClientRect(); // 获取画布在页面上的位置
-    mouseX = event.clientX - rect.left; // 计算鼠标在画布内的 X 坐标
+    const rect = canvas.getBoundingClientRect();
+    mouseX = event.clientX - rect.left;
 });
 
 canvas.addEventListener('mousedown', (event) => {
-     // 只有在游戏运行时才响应点击发射
-    if (gameRunning && !gameOver) {
-       mouseClicked = true;
-    } else if (!gameRunning) {
-         startGame(); // 点击画布开始游戏
+    if (!gameRunning && !gameOver) {
+         startGame();
+    } else if (gameRunning && !gameOver) {
+        mouseClicked = true; // Set flag for shooting in update()
     } else if (gameOver) {
-        restartGame(); // 游戏结束后点击重新开始
+        restartGame();
     }
 });
+// Prevent mouseup from being missed if mouse moves off canvas quickly
+canvas.addEventListener('mouseup', () => {
+    // mouseClicked = false; // Click is momentary, handled in update
+});
+
 
 // --- 游戏函数 ---
 
+// 生成星星背景
+function createStars() {
+    stars = []; // Clear existing stars
+    for (let i = 0; i < STAR_COUNT; i++) {
+        stars.push({
+            x: Math.random() * CANVAS_WIDTH,
+            y: Math.random() * CANVAS_HEIGHT,
+            radius: Math.random() * 1.5 // Small stars
+        });
+    }
+}
+
 // 创建敌人
 function createEnemy() {
+    const radius = Math.random() * (ENEMY_RADIUS_MAX - ENEMY_RADIUS_MIN) + ENEMY_RADIUS_MIN;
+    const color = ENEMY_COLORS[Math.floor(Math.random() * ENEMY_COLORS.length)];
     enemies.push({
-        x: Math.random() * (canvas.width - ENEMY_WIDTH), // 随机 X 位置
-        y: -ENEMY_HEIGHT, // 从画布顶端外部开始
-        width: ENEMY_WIDTH,
-        height: ENEMY_HEIGHT,
-        speedY: Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN) + ENEMY_SPEED_MIN, // 随机 Y 速度
-        speedX: (Math.random() - 0.5) * 2 // 随机 X 漂移速度 (-1 到 1)
+        x: Math.random() * (CANVAS_WIDTH - radius * 2) + radius, // Ensure enemy spawns fully within bounds
+        y: -radius, // Start above the screen
+        radius: radius,
+        color: color,
+        speedY: Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN) + ENEMY_SPEED_MIN,
+        speedX: (Math.random() - 0.5) * 1 // Slower horizontal drift
     });
 }
 
 // 发射子弹
 function shootBullet(x, y) {
     bullets.push({
-        x: x - BULLET_WIDTH / 2, // 从玩家中心发射
-        y: y,
-        width: BULLET_WIDTH,
-        height: BULLET_HEIGHT,
-        speed: BULLET_SPEED
+        x: x, // Start from player's center X
+        y: y - player.radius, // Start just above the player's arc
+        radius: BULLET_RADIUS,
+        speed: BULLET_SPEED,
+        color: BULLET_COLOR
     });
-    // 尝试播放声音
-    // shootSound.currentTime = 0; // 从头播放
-    // shootSound.play().catch(e => console.log("播放射击声音失败:", e)); // 播放并捕获错误
-    playBeep(880, 50, 0.05); // 播放一个高音短促的 beep
+    shootSound();
 }
 
-// 碰撞检测 (Axis-Aligned Bounding Box)
-function checkCollision(rect1, rect2) {
-    return rect1.x < rect2.x + rect2.width &&
-           rect1.x + rect1.width > rect2.x &&
-           rect1.y < rect2.y + rect2.height &&
-           rect1.y + rect1.height > rect2.y;
+// 圆形碰撞检测
+function checkCircleCollision(circle1, circle2) {
+    const dx = circle2.x - circle1.x;
+    const dy = circle2.y - circle1.y;
+    const distanceSquared = dx * dx + dy * dy; // Use squared distance to avoid sqrt
+    const radiusSumSquared = (circle1.radius + circle2.radius) * (circle1.radius + circle2.radius);
+    return distanceSquared <= radiusSumSquared;
 }
 
 // --- 更新游戏状态 ---
 function update() {
-    if (!gameRunning || gameOver) return; // 如果游戏未运行或已结束，则不更新
+    if (!gameRunning || gameOver) return;
 
     // --- 玩家移动 ---
-    player.speed = 0; // 重置键盘速度
-    // 键盘控制
+    player.speed = 0;
     if (keysPressed['ArrowLeft'] || keysPressed['KeyA']) {
         player.speed = -PLAYER_SPEED;
     }
     if (keysPressed['ArrowRight'] || keysPressed['KeyD']) {
         player.speed = PLAYER_SPEED;
     }
-    // 鼠标/触摸板控制 (覆盖键盘)
-    player.x = mouseX - player.width / 2;
 
-    // 键盘速度应用 (如果鼠标没控制，键盘依然有效——可取消注释下面两行)
+    // 鼠标/触摸板控制 (优先)
+    player.x = mouseX;
+
+    // 键盘速度应用 (如果鼠标没动，键盘仍可微调——可选)
     // if (player.speed !== 0) {
-    //      player.x += player.speed;
+    //     player.x += player.speed;
     // }
 
-    // 限制玩家在画布内
-    if (player.x < 0) player.x = 0;
-    if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+    // 限制玩家在画布内 (考虑半径)
+    if (player.x - player.radius < 0) player.x = player.radius;
+    if (player.x + player.radius > CANVAS_WIDTH) player.x = CANVAS_WIDTH - player.radius;
 
     // --- 玩家射击 ---
-    // 冷却计时
     if (player.shootCooldown > 0) {
         player.shootCooldown--;
     }
-    // 空格键射击
-    if (keysPressed['Space'] && player.shootCooldown <= 0) {
-        shootBullet(player.x + player.width / 2, player.y);
-        player.shootCooldown = player.shootDelay; // 重置冷却
+    if ((keysPressed['Space'] || mouseClicked) && player.shootCooldown <= 0) {
+        shootBullet(player.x, player.y); // Pass player's center x,y
+        player.shootCooldown = player.shootDelay;
+        mouseClicked = false; // Reset mouse click flag after shooting
     }
-    // 鼠标/触摸板点击射击
-    if (mouseClicked && player.shootCooldown <= 0) {
-         shootBullet(player.x + player.width / 2, player.y);
-         player.shootCooldown = player.shootDelay;
-         mouseClicked = false; // 重置点击状态
-    }
-
 
     // --- 更新子弹 ---
     for (let i = bullets.length - 1; i >= 0; i--) {
         bullets[i].y -= bullets[i].speed;
-        // 移除飞出屏幕的子弹
-        if (bullets[i].y + bullets[i].height < 0) {
-            bullets.splice(i, 1); // 从数组中移除
+        if (bullets[i].y + bullets[i].radius < 0) {
+            bullets.splice(i, 1);
         }
     }
 
     // --- 更新敌人 ---
     frameCount++;
-    // 按频率生成敌人
     if (frameCount % ENEMY_SPAWN_RATE === 0) {
         createEnemy();
     }
@@ -199,97 +201,115 @@ function update() {
         enemies[i].y += enemies[i].speedY;
         enemies[i].x += enemies[i].speedX;
 
-        // 敌人碰到左右边界反弹 (简单处理)
-        if (enemies[i].x <= 0 || enemies[i].x + enemies[i].width >= canvas.width) {
+        // 简单边界反弹
+        if (enemies[i].x - enemies[i].radius <= 0 || enemies[i].x + enemies[i].radius >= CANVAS_WIDTH) {
              enemies[i].speedX *= -1;
         }
 
-        // 移除掉落出屏幕的敌人，并结束游戏
-        if (enemies[i].y > canvas.height) {
-            enemies.splice(i, 1);
-            setGameOver("敌人到达底部！");
-            return; // 游戏结束，停止当前帧更新
+        // 敌人掉落到底部 -> Game Over
+        if (enemies[i].y - enemies[i].radius > CANVAS_HEIGHT) {
+            enemies.splice(i, 1); // Remove fallen enemy
+            setGameOver("目标溜走了！");
+            return;
         }
     }
 
     // --- 碰撞检测 ---
-    // 子弹与敌人
+    // 子弹 vs 敌人
     for (let i = bullets.length - 1; i >= 0; i--) {
         for (let j = enemies.length - 1; j >= 0; j--) {
-            if (checkCollision(bullets[i], enemies[j])) {
-                // 碰撞发生
-                score += 10; // 加分
-                scoreElement.textContent = score; // 更新页面分数显示
-                // 尝试播放声音
-                // hitSound.currentTime = 0;
-                // hitSound.play().catch(e => console.log("播放击中声音失败:", e));
-                playBeep(220, 80, 0.1); // 播放一个低音长一点的 beep
+            // Check if bullet exists before collision check (might be removed in same frame)
+             if (!bullets[i]) break;
 
-                bullets.splice(i, 1); // 移除子弹
-                enemies.splice(j, 1); // 移除敌人
-                createEnemy();        // 再生成一个敌人
-                break; // 子弹已消失，停止内层循环
+            if (checkCircleCollision(bullets[i], enemies[j])) {
+                hitSound();
+                score += Math.ceil(enemies[j].radius); // Score based on size
+                bullets.splice(i, 1);
+                enemies.splice(j, 1);
+                // Don't immediately respawn, let the field clear a bit
+                break; // Bullet hit, no need to check this bullet against other enemies
             }
         }
     }
 
-    // 敌人与玩家
+    // 敌人 vs 玩家 (Player treated as a circle for collision)
     for (let i = enemies.length - 1; i >= 0; i--) {
-        if (checkCollision(player, enemies[i])) {
-            setGameOver("飞船被撞毁！");
-            return; // 游戏结束
+        if (checkCircleCollision(player, enemies[i])) {
+            setGameOver("飞船被撞！");
+            return;
         }
     }
 }
 
 // --- 绘制 ---
-function draw() {
-    // 清除画布
-    ctx.fillStyle = '#333'; // 深灰色背景
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    if (!gameRunning && !gameOver) {
-        // 显示开始提示
-        drawText("点击画布开始游戏", canvas.width / 2, canvas.height / 2 - 30, 24, TEXT_COLOR, 'center');
-        drawText("键盘: ← → / AD 移动, 空格发射", canvas.width / 2, canvas.height / 2 + 10, 16, TEXT_COLOR, 'center');
-        drawText("鼠标/触摸板: 移动控制, 点击发射", canvas.width / 2, canvas.height / 2 + 40, 16, TEXT_COLOR, 'center');
-        return; // 不绘制游戏元素
-    }
-
-
-    // 绘制玩家 (简单矩形)
-    // 如果想用图片： ctx.drawImage(playerImage, player.x, player.y, player.width, player.height);
-    ctx.fillStyle = PLAYER_COLOR;
-    ctx.fillRect(player.x, player.y, player.width, player.height);
-
-    // 绘制子弹
-    ctx.fillStyle = BULLET_COLOR;
-    for (const bullet of bullets) {
-        ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
-    }
-
-    // 绘制敌人
-    ctx.fillStyle = ENEMY_COLOR;
-    for (const enemy of enemies) {
-        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-    }
-
-    // 绘制分数 (在画布顶部)
-    drawText(`分数: ${score}`, 10, 20, 18, TEXT_COLOR, 'left');
-
-
-    // 如果游戏结束，显示结束信息
-    if (gameOver) {
-        drawText("游戏结束!", canvas.width / 2, canvas.height / 2 - 40, 48, 'orange', 'center');
-        drawText(`最终得分: ${score}`, canvas.width / 2, canvas.height / 2 + 10, 24, TEXT_COLOR, 'center');
-        drawText("点击画布重新开始", canvas.width / 2, canvas.height / 2 + 50, 18, TEXT_COLOR, 'center');
+function drawStars() {
+    ctx.fillStyle = STAR_COLOR;
+    for (const star of stars) {
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fill();
     }
 }
 
-// 绘制文字的辅助函数
+function draw() {
+    // 绘制背景
+    ctx.fillStyle = BACKGROUND_COLOR;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // 绘制星星
+    drawStars();
+
+    // --- 绘制游戏元素 (只有在游戏运行或结束后才绘制) ---
+    if (gameRunning || gameOver) {
+         // 绘制玩家 (半圆)
+        ctx.fillStyle = PLAYER_COLOR;
+        ctx.beginPath();
+        // arc(x, y, radius, startAngle, endAngle, anticlockwise)
+        // 0 is right, PI is left. Draw top half circle.
+        ctx.arc(player.x, player.y, player.radius, Math.PI, 0, false);
+        ctx.closePath(); // Close path to fill correctly
+        ctx.fill();
+
+
+        // 绘制子弹 (圆)
+        ctx.fillStyle = BULLET_COLOR;
+        for (const bullet of bullets) {
+            ctx.beginPath();
+            ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // 绘制敌人 (圆)
+        for (const enemy of enemies) {
+            ctx.fillStyle = enemy.color;
+            ctx.beginPath();
+            ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // 绘制分数 (左上角)
+        drawText(`分数: ${score}`, 15, 30, 18, TEXT_COLOR, 'left');
+    }
+
+
+    // --- 绘制游戏状态文字 ---
+    if (!gameRunning && !gameOver) {
+        // 开始画面
+        drawText("点击开始", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 30, 32, TEXT_COLOR, 'center');
+        drawText("键盘: ← → / AD 移动, 空格发射", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10, 14, TEXT_COLOR, 'center');
+        drawText("鼠标/触摸板: 移动控制, 点击发射", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 35, 14, TEXT_COLOR, 'center');
+    } else if (gameOver) {
+        // 结束画面
+        drawText("游戏结束!", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40, 48, 'orange', 'center');
+        drawText(`最终得分: ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10, 24, TEXT_COLOR, 'center');
+        drawText("点击画布重新开始", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50, 18, TEXT_COLOR, 'center');
+    }
+}
+
+// 绘制文字的辅助函数 (保持不变)
 function drawText(text, x, y, size = 20, color = TEXT_COLOR, align = 'center') {
     ctx.fillStyle = color;
-    ctx.font = `${size}px Arial`;
+    ctx.font = `${size}px sans-serif`; // Use a generic sans-serif font
     ctx.textAlign = align;
     ctx.fillText(text, x, y);
 }
@@ -297,10 +317,10 @@ function drawText(text, x, y, size = 20, color = TEXT_COLOR, align = 'center') {
 
 // --- 游戏主循环 ---
 function gameLoop() {
-    update(); // 更新状态
-    draw();   // 重新绘制
+    update();
+    draw();
 
-    // 持续请求下一帧动画
+    // Only continue the loop if the game should be running
     if (gameRunning) {
         requestAnimationFrame(gameLoop);
     }
@@ -308,47 +328,47 @@ function gameLoop() {
 
 // --- 游戏控制 ---
 function startGame() {
-    if (gameRunning) return; // 防止重复开始
+    if (gameRunning) return;
     console.log("游戏开始！");
     gameRunning = true;
     gameOver = false;
     score = 0;
-    scoreElement.textContent = score;
-    gameStateText.textContent = "游戏进行中...";
-    // 重置游戏对象
-    player.x = canvas.width / 2 - PLAYER_WIDTH / 2;
-    player.y = canvas.height - PLAYER_HEIGHT - 20;
+    frameCount = 0; // Reset frame count for spawning
+    player.x = CANVAS_WIDTH / 2; // Reset player position
+    player.y = CANVAS_HEIGHT - PLAYER_RADIUS * 1.5;
     bullets = [];
     enemies = [];
-    frameCount = 0;
-    keysPressed = {}; // 清空按键状态
-    mouseClicked = false; // 清空点击状态
-    // 生成初始敌人
-    for(let i = 0; i < 5; i++) { // 初始少一点敌人
-        setTimeout(createEnemy, Math.random() * 1000); // 稍微错开生成
-    }
+    keysPressed = {};
+    mouseClicked = false;
 
-    // 启动游戏循环
+    // 减少初始敌人数量，并且延时出现
+    // createEnemy(); // Start with maybe one enemy after a short delay
+    setTimeout(createEnemy, 500); // Spawn first enemy after 0.5 sec
+
+    createStars(); // Create stars at the beginning
     requestAnimationFrame(gameLoop);
 }
 
 function setGameOver(reason) {
-    if (!gameRunning || gameOver) return; // 防止重复结束
+    if (!gameRunning || gameOver) return;
     console.log("游戏结束:", reason);
-    gameRunning = false; // 停止动画循环请求
+    gameRunning = false;
     gameOver = true;
-    gameStateText.textContent = `游戏结束! ${reason} 点击画布重新开始。`;
+    gameOverSound(); // Play game over sound
+    // Draw is called one last time via the final animation frame request
+    // We redraw here immediately to show the game over text faster
+     draw();
 }
 
 function restartGame() {
     if (!gameOver) return;
     console.log("重新开始游戏...");
-    startGame(); // 调用开始游戏的逻辑即可
+    // Resetting gameOver flag is handled inside startGame now
+    startGame();
 }
 
-// --- 初始提示 ---
-// 页面加载后先绘制一次提示信息
+// --- Initial Setup ---
 window.onload = () => {
-    draw(); // 初始绘制，会显示开始提示
-    gameStateText.textContent = "点击画布开始游戏";
+    createStars(); // Create stars initially
+    draw(); // Draw the initial "Click to Start" screen
 };
