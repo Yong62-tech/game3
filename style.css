@@ -1,59 +1,15 @@
 body {
-    display: flex; /* 使用 flexbox 布局 */
-    flex-direction: column; /* 垂直排列子元素 */
-    align-items: center; /* 水平居中 */
-    justify-content: center; /* 垂直居中（尽量） */
-    min-height: 100vh; /* 最小高度为视口高度 */
-    background-color: #f0f0f0; /* 浅灰色背景 */
-    font-family: sans-serif; /* 使用无衬线字体 */
+    display: flex;
+    justify-content: center; /* 水平居中 */
+    align-items: center; /* 垂直居中 */
+    min-height: 100vh;
+    background-color: #282c34; /* 深色背景，类似代码编辑器 */
     margin: 0;
+    overflow: hidden; /* 防止滚动条 */
 }
 
-h1, #instructions, #score {
-    text-align: center; /* 文本居中 */
-    margin-bottom: 10px; /* 底部外边距 */
-}
-
-#instructions p {
-    margin: 5px 0; /* 上下外边距 */
-}
-
-/* 给画布加个边框，方便看到边界 */
 canvas#gameCanvas {
-    border: 1px solid black;
-    background-color: #333; /* 深灰色画布背景 */
-    display: block; /* 块级元素，消除可能的底部空隙 */
-    margin: 0 auto; /* 使得画布本身在 flex 容器中居中（虽然父元素已经居中了） */
-    cursor: crosshair; /* 鼠标在画布上时显示为十字准星 */
-}
-
-/* 游戏结束时的文字样式 */
-.gameOverText {
-    position: absolute; /* 绝对定位，相对于最近的非 static 定位祖先 */
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%); /* 精确居中 */
-    color: white;
-    font-size: 48px;
-    text-align: center;
-    background-color: rgba(0, 0, 0, 0.7); /* 半透明黑色背景 */
-    padding: 20px;
-    border-radius: 10px;
-    z-index: 10; /* 确保在画布之上 */
-}
-
-/* 开始提示文字样式 */
-.startText {
-     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    font-size: 24px;
-    text-align: center;
-    background-color: rgba(0, 0, 0, 0.7);
-    padding: 20px;
-    border-radius: 10px;
-    z-index: 10;
-    cursor: pointer; /* 提示可以点击 */
+    border: 1px solid #666; /* 深一点的边框 */
+    display: block; /* 消除可能的底部空隙 */
+    /* 背景色现在由 JS 控制 */
 }
